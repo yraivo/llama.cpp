@@ -6265,8 +6265,8 @@ int ggml_metal_op_moe_reduce(ggml_metal_op_t ctx, int idx) {
     return n_fuse;
 }
 
-int ggml_metal_op_top_k(ggml_metal_op_t ctx, int idx) {
-    ggml_tensor * op = ctx->node(idx);
+bool ggml_metal_op_top_k_use_radix(const ggml_tensor * op) {
+    GGML_ASSERT(op->op == GGML_OP_TOP_K);
 
     // radix-select has a fixed single-workgroup-per-row cost (~50-60us) that is only
     // amortized for long rows, many rows, or a large k; otherwise the bitonic path wins
@@ -6274,10 +6274,13 @@ int ggml_metal_op_top_k(ggml_metal_op_t ctx, int idx) {
     const int k     = op->ne[0];
     const int nrows = ggml_nrows(op->src[0]);
 
-    const bool use_radix =
-        ncols > 2048 && (k > 64 || (nrows > 4 && ncols >= 8192));
+    return ncols > 2048 && (k > 64 || (nrows > 4 && ncols >= 8192));
+}
 
-    if (use_radix) {
+int ggml_metal_op_top_k(ggml_metal_op_t ctx, int idx) {
+    ggml_tensor * op = ctx->node(idx);
+
+    if (ggml_metal_op_top_k_use_radix(op)) {
         ggml_metal_op_top_k_radix(ctx, idx);
     } else {
         ggml_metal_op_top_k_bitonic(ctx, idx);
